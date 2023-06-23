@@ -1,4 +1,4 @@
-# scgpt
+# SC-GPT
 
 This repository is the *unofficial* implementation of SC-GPT with the full paper title:
 
