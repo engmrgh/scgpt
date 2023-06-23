@@ -193,10 +193,9 @@ def main():
         {'dull_metric': 100})
 
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_checkpoint,
-                                              model_max_length=max(args.max_in_seq_length, args.max_out_seq_length),
-                                              cache_dir="../model/pretrained/")
+                                              model_max_length=max(args.max_in_seq_length, args.max_out_seq_length))
 
-    transformer = GPT2LMHeadModel.from_pretrained(args.model_checkpoint, cache_dir="../model/pretrained/")
+    transformer = GPT2LMHeadModel.from_pretrained(args.model_checkpoint)
 
     # TODO: Do we need this line? tokenizer, transformer = add_special_tokens_to_model(tokenizer, transformer)
 
