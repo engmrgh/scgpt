@@ -135,7 +135,7 @@ def train(
 
 
 def add_special_tokens_to_model(tokenizer, transformer):
-    tokenizer.add_special_tokens({'additional_special_tokens': SPECIAL_TOKENS})
+    # tokenizer.add_special_tokens({'additional_special_tokens': SPECIAL_TOKENS})
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     transformer.resize_token_embeddings(len(tokenizer))
     return tokenizer, transformer
@@ -159,7 +159,7 @@ def main():
     parser.add_argument("--max_out_seq_length", type=int, default=256,
                         help="Max output sequence which all sequences will be padded")
     parser.add_argument("--train_batch_size", type=int,
-                        default=8, help="Batch size for training")
+                        default=2, help="Batch size for training")
     parser.add_argument("--valid_batch_size", type=int,
                         default=2, help="Batch size for validation")
     parser.add_argument("--gradient_accumulation_steps", type=int,
@@ -197,7 +197,7 @@ def main():
 
     transformer = GPT2LMHeadModel.from_pretrained(args.model_checkpoint)
 
-    # TODO: Do we need this line? tokenizer, transformer = add_special_tokens_to_model(tokenizer, transformer)
+    tokenizer, transformer = add_special_tokens_to_model(tokenizer, transformer)
 
     print("Creating Response Generation Dataset for Training...")
     response_generation_train_dataset = \
