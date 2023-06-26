@@ -77,14 +77,16 @@ def test(
             gen_responses = tokenizer.batch_decode(gen_response_ids)
 
             for inst, gen_resp, ref_resp in zip(instructions, gen_responses, ref_responses):
-                _inst = inst.replace("<pad>", "").replace("</s>", "").strip()
+                _inst = inst.replace(" [PAD]", "")
                 instructions_list.append(_inst)
 
-                _ref_resp = ref_resp.replace("<pad>", "").replace("</s>", "").strip()
-                ref_entities = re.findall("\[.+?\]", ref_resp)
+                _ref_resp = ref_resp.replace(" [PAD]", "").replace("!", "").strip()
+                _ref_resp = _ref_resp[:_ref_resp.find("<|endoftext|>")]
+                ref_entities = re.findall("\[.+?\]", _ref_resp)
                 reference_responses.append([_ref_resp,])
 
-                _gen_resp = gen_resp[:gen_resp.find("</s>")].replace("<pad>", "").replace("</s>", "").strip()
+                _gen_resp = gen_resp[gen_resp.find("<|endoftext|>")+len("<|endoftext|>"):].replace(" [PAD]", "").strip()
+                _gen_resp = _gen_resp[:_gen_resp.find("<|endoftext|>")]
                 gen_entities = re.findall("\[.+?\]", _gen_resp)
                 generated_responses.append(_gen_resp)
 
@@ -112,7 +114,7 @@ def main():
     parser.add_argument("--test_dataset", type=str, required=True,
                         help="Path of the test dataset")
 
-    parser.add_argument("--max_in_seq_length", type=int, default=1024,
+    parser.add_argument("--max_in_seq_length", type=int, default=512,
                         help="Max input sequence which all sequences will be padded")
     parser.add_argument("--max_out_seq_length", type=int, default=256,
                         help="Max output sequence which all sequences will be padded")
