@@ -32,10 +32,6 @@ class SCGPTDataset(Dataset):
                 text = sys_act + self.tokenizer.bos_token + resp_delex
                 text_tokenized = self.tokenizer(text, padding='max_length', return_tensors='pt',
                                                 max_length=self.max_in_seq_length)
-                if text_tokenized['input_ids'].shape[1] > self.max_in_seq_length:
-                    print(f"WARNING: input sequence length is more than {self.max_in_seq_length}, seq token length: {text_tokenized['input_ids'].shape}")
-                    text_tokenized['input_ids'] = text_tokenized['input_ids'][:, :self.max_in_seq_length]
-                    text_tokenized['attention_mask'] = text_tokenized['attention_mask'][:, :self.max_in_seq_length]
 
                 input_ids = text_tokenized['input_ids'].clone().detach().squeeze()
                 attention_mask = text_tokenized['attention_mask'].clone().detach().squeeze()
@@ -64,4 +60,53 @@ class SCGPTDataset(Dataset):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": lm_label
+        }
+
+
+class SCGPTDatasetForTest(Dataset):
+    def __init__(
+        self,
+        tokenizer,
+        dataset_path
+    ):
+        self.tokenizer = tokenizer
+        self.dataset = self.read_dataset(dataset_path)
+        self.dataset = self.prepare_dataset()
+
+    def read_dataset(self, dataset_path):
+        with open(dataset_path) as f:
+            data = json.load(f)
+        return data
+
+    def prepare_dataset(self):
+        prompts = list()
+        labels = list()
+        for _, dialogue in tqdm(self.dataset.items()):
+            for turn in dialogue['log']:
+                sys_act = turn['sys_act']
+                resp_delex = turn['resp_delex']
+
+                prompt = sys_act + self.tokenizer.bos_token
+                prompts.append(prompt)
+                labels.append(resp_delex)
+
+        prompts_enc = self.tokenizer(prompts, padding=True, return_tensors='pt')
+        prompts_enc['labels'] = labels
+        prompts_enc['prompts'] = prompts
+        return prompts_enc
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        input_ids = self.dataset['input_ids']
+        attention_mask = self.dataset['attention_mask']
+        prompt = self.dataset['prompts']
+        label = self.dataset['labels']
+
+        return {
+            "input_ids": input_ids[index],
+            "attention_mask": attention_mask[index],
+            "prompt": prompt[index],
+            "label": label[index]
         }

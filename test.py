@@ -8,7 +8,12 @@ from torch.utils.data import DataLoader
 import evaluate
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
-from dataset import SCGPTDataset
+from dataset import SCGPTDatasetForTest
+
+
+PAD_TOKEN = '<|pad|>'
+BOS_TOKEN = '<|startoftext|>'
+EOS_TOKEN = '<|endoftext|>'
 
 
 def calculate_entity_f1(ref_entities, gen_entities):
@@ -45,18 +50,19 @@ def avg_f1(f1_scores):
 
 def test(
     tokenizer,
-    transformer,
+    model,
     dataloader,
     device,
-    max_output_len
+    max_new_tokens
 ):
-    transformer.eval()
-    transformer = transformer.to(device)
+    model.eval()
+    model = model.to(device)
 
-    instructions_list = list()
-    reference_responses = list()
-    generated_responses = list()
+    prompts_list = list()
+    labels_list = list()
+    predictions_list = list()
     f1_scores = list()
+
 
     with torch.no_grad():
         for data in tqdm(dataloader,
@@ -64,45 +70,43 @@ def test(
                          bar_format='{l_bar}{bar:4}{r_bar}{bar:-2b}',
                          leave=True):
 
-            ids = data['input_ids'].to(device, dtype=torch.long)
-            ref_response_ids = data['labels'].to(device, dtype=torch.long)
+            input_ids = data['input_ids'].to(device, dtype=torch.long)
+            attention_mask = data['attention_mask'].to(device, dtype=torch.long)
+            input_ids = input_ids.squeeze(dim=1)
+            attention_mask = attention_mask.squeeze(dim=1)
+            output_ids = model.generate(input_ids, attention_mask=attention_mask, max_new_tokens=max_new_tokens)
+            prediction = tokenizer.batch_decode(output_ids)
 
-            ids = ids.squeeze(dim=1)
-            ref_response_ids = ref_response_ids.squeeze(dim=1)
-            ref_response_ids[ref_response_ids==-100] = 0
+            import pdb
+            pdb.set_trace()
 
-            instructions = tokenizer.batch_decode(ids)
-            ref_responses = tokenizer.batch_decode(ref_response_ids)
-            gen_response_ids = transformer.generate(ids, max_new_tokens=max_output_len)
-            gen_responses = tokenizer.batch_decode(gen_response_ids)
+            prompt = data['prompt']
+            label = data['label']
+            for _prompt, _prediction, _label in zip(prompt, prediction, label):
+                _prediction = _prediction[_prediction.find(BOS_TOKEN)+len(BOS_TOKEN):].replace(PAD_TOKEN, "").strip()
+                _prediction = _prediction[:_prediction.find(EOS_TOKEN)]
+                _prediction_entities = re.findall("\[.+?\]", _prediction)
 
-            for inst, gen_resp, ref_resp in zip(instructions, gen_responses, ref_responses):
-                _inst = inst.replace(" [PAD]", "")
-                instructions_list.append(_inst)
-
-                _ref_resp = ref_resp.replace(" [PAD]", "").replace("!", "").strip()
-                _ref_resp = _ref_resp[:_ref_resp.find("<|endoftext|>")]
-                ref_entities = re.findall("\[.+?\]", _ref_resp)
-                reference_responses.append([_ref_resp,])
-
-                _gen_resp = gen_resp[gen_resp.find("<|endoftext|>")+len("<|endoftext|>"):].replace(" [PAD]", "").strip()
-                _gen_resp = _gen_resp[:_gen_resp.find("<|endoftext|>")]
-                gen_entities = re.findall("\[.+?\]", _gen_resp)
-                generated_responses.append(_gen_resp)
-
-                if len(ref_entities) + len(gen_entities) > 0:
-                    entity_f1 = calculate_entity_f1(ref_entities, gen_entities)
+                _label_entities = re.findall("\[.+?\]", _label)
+                if len(_label_entities) > 0:
+                    entity_f1 = calculate_entity_f1(_label_entities, _prediction_entities)
                     f1_scores.append(entity_f1)
+                elif len(_prediction_entities) > 0:
+                    f1_scores.append(0)
                 else:
                     f1_scores.append(None)
 
+                prompts_list.append(_prompt)
+                predictions_list.append(_prediction)
+                labels_list.append([_label,])
+
     bleu = evaluate.load("bleu")
-    results = bleu.compute(predictions=generated_responses, references=reference_responses)
+    results = bleu.compute(predictions=predictions_list, references=labels_list)
     results['entity_f1'] = avg_f1(f1_scores)
 
     error_analysis = [{"instruction": inst, "ref": ref[0], "gen": gen, "f1_score": f1} \
                         for inst, ref, gen, f1 in \
-                            zip(instructions_list, reference_responses, generated_responses, f1_scores)]
+                            zip(prompts_list, labels_list, predictions_list, f1_scores)]
 
     return results, error_analysis
 
@@ -114,34 +118,33 @@ def main():
     parser.add_argument("--test_dataset", type=str, required=True,
                         help="Path of the test dataset")
 
-    parser.add_argument("--max_in_seq_length", type=int, default=512,
-                        help="Max input sequence which all sequences will be padded")
-    parser.add_argument("--max_out_seq_length", type=int, default=256,
-                        help="Max output sequence which all sequences will be padded")
-    parser.add_argument("--test_batch_size", type=int,
+    parser.add_argument("--max_new_tokens", type=int, default=256,
+                        help="The maximum numbers of tokens to generate, ignoring the number of tokens in the prompt.")
+    parser.add_argument("--batch_size", type=int,
                         default=5, help="Batch size for testing")
     parser.add_argument("--device", type=str, default="cuda",
                         help="Device (cuda or cpu)")
     args = parser.parse_args()
 
-    tokenizer = GPT2Tokenizer.from_pretrained(args.model_checkpoint,
-                                              model_max_length=max(args.max_in_seq_length, args.max_out_seq_length))
-    transformer = GPT2LMHeadModel.from_pretrained(args.model_checkpoint)
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_checkpoint)
+    tokenizer.padding_side = "left" # In order to be able to use batching while predicting
+    tokenizer.add_special_tokens({'pad_token': PAD_TOKEN,
+                                  'bos_token': BOS_TOKEN,
+                                  'eos_token': EOS_TOKEN})
+    model = GPT2LMHeadModel.from_pretrained(args.model_checkpoint)
+    model.resize_token_embeddings(len(tokenizer))
 
     print("Creating Response Generation Dataset...")
     test_dataset = \
-        SCGPTDataset(tokenizer=tokenizer,
-                     dataset_path=args.test_dataset,
-                     max_in_seq_length=args.max_in_seq_length,
-                     max_out_seq_length=args.max_out_seq_length)
+        SCGPTDatasetForTest(tokenizer=tokenizer, dataset_path=args.test_dataset)
 
-    testset_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size)
+    testset_dataloader = DataLoader(test_dataset, batch_size=args.batch_size)
 
     result, error_analysis = test(tokenizer=tokenizer,
-                                  transformer=transformer,
+                                  model=model,
                                   dataloader=testset_dataloader,
                                   device=args.device,
-                                  max_output_len=args.max_out_seq_length)
+                                  max_new_tokens=args.max_new_tokens)
 
     with open(f'{args.model_checkpoint}/error_analysis.json', 'w') as f:
         json.dump(error_analysis, f, indent=4, ensure_ascii=False)
