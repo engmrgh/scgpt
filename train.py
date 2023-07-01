@@ -7,22 +7,12 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
-from dataset import SCGPTDataset
+from dataset import SCGPTDatasetForTrain
 
 
-SPECIAL_TOKENS = [
-    # DELEXICALIZE SPECIAL TOKENS
-    '[value_arrive]', '[value_address]', '[value_pricerange]', '[value_car]', '[value_day]', '[value_time]',
-    '[value_leave]', '[value_food]', '[value_area]', '[value_type]', '[value_phone]', '[value_name]',
-    '[value_department]',
-    # BELIEF STATE SPECIAL TOKENS
-    '[greet]', '[police]', '[recommend]', '[reqmore]', '[offerbook]', '[train]', '[nobook]', '[attraction]',
-    '[hospital]', '[general]', '[taxi]', '[restaurant]', '[request]', '[inform]', '[select]', '[nooffer]',
-    '[offerbooked]', '[hotel]', '[bye]', '[welcome]',
-    # SPECIAL INDICATOR TOKENS
-    '<sos_u>', '<eos_u>', '<sos_b>', '<eos_b>', '<sos_a>', '<eos_a>', '<sos_db>', '<eos_db>',
-    '<sos_r>', '<eos_r>', '<sos_x>', '<eos_x>' # TODO: remove these!
-]
+PAD_TOKEN = '<|pad|>'
+BOS_TOKEN = '<|startoftext|>'
+EOS_TOKEN = '<|endoftext|>'
 
 
 def save_model(args, model, tokenizer, optimizer, name):
@@ -135,10 +125,10 @@ def train(
 
 
 def add_special_tokens_to_model(tokenizer, transformer):
-    # tokenizer.add_special_tokens({'additional_special_tokens': SPECIAL_TOKENS})
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+    tokenizer.add_special_tokens({'pad_token': PAD_TOKEN,
+                                  'eos_token': EOS_TOKEN,
+                                  'bos_token': BOS_TOKEN})
     transformer.resize_token_embeddings(len(tokenizer))
-    return tokenizer, transformer
 
 
 def main():
@@ -154,10 +144,8 @@ def main():
 
     parser.add_argument("--lr", type=float,
                         default=5e-5, help="Learning rate")
-    parser.add_argument("--max_in_seq_length", type=int, default=1024,
-                        help="Max input sequence which all sequences will be padded")
-    parser.add_argument("--max_out_seq_length", type=int, default=256,
-                        help="Max output sequence which all sequences will be padded")
+    parser.add_argument("--max_length", type=int, default=512,
+                        help="Max sequence length which all sequences will be padded")
     parser.add_argument("--train_batch_size", type=int,
                         default=2, help="Batch size for training")
     parser.add_argument("--valid_batch_size", type=int,
@@ -188,33 +176,28 @@ def main():
         'lr': args.lr,
         'n_epochs': args.n_epochs,
         'device': args.device,
-        'max_in_seq_length': args.max_in_seq_length,
-        'max_out_seq_length': args.max_out_seq_length},
+        'max_length': args.max_length},
         {'dull_metric': 100})
 
-    tokenizer = GPT2Tokenizer.from_pretrained(args.model_checkpoint,
-                                              model_max_length=max(args.max_in_seq_length, args.max_out_seq_length))
-
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_checkpoint)
     transformer = GPT2LMHeadModel.from_pretrained(args.model_checkpoint)
 
-    tokenizer, transformer = add_special_tokens_to_model(tokenizer, transformer)
+    add_special_tokens_to_model(tokenizer, transformer)
 
     print("Creating Response Generation Dataset for Training...")
     response_generation_train_dataset = \
-        SCGPTDataset(tokenizer=tokenizer,
-                     dataset_path=args.train_dataset,
-                     max_in_seq_length=args.max_in_seq_length,
-                     max_out_seq_length=args.max_out_seq_length)
+        SCGPTDatasetForTrain(tokenizer=tokenizer,
+                             dataset_path=args.train_dataset,
+                             max_length=args.max_length)
 
     response_generation_train_dataloader = DataLoader(response_generation_train_dataset,
                                                       batch_size=args.train_batch_size, shuffle=True)
 
     print("Creating Response Generation Dataset for Validation...")
     response_generation_validation_dataset = \
-        SCGPTDataset(tokenizer=tokenizer,
-                     dataset_path=args.val_dataset,
-                     max_in_seq_length=args.max_in_seq_length,
-                     max_out_seq_length=args.max_out_seq_length)
+        SCGPTDatasetForTrain(tokenizer=tokenizer,
+                             dataset_path=args.val_dataset,
+                             max_length=args.max_length)
 
     response_generation_validation_dataloader = DataLoader(response_generation_validation_dataset,
                                                            batch_size=args.valid_batch_size, shuffle=False)

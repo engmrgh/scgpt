@@ -77,9 +77,6 @@ def test(
             output_ids = model.generate(input_ids, attention_mask=attention_mask, max_new_tokens=max_new_tokens)
             prediction = tokenizer.batch_decode(output_ids)
 
-            import pdb
-            pdb.set_trace()
-
             prompt = data['prompt']
             label = data['label']
             for _prompt, _prediction, _label in zip(prompt, prediction, label):
