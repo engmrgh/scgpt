@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import LRScheduler
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
 from dataset import SCGPTDatasetForTrain
@@ -141,6 +142,8 @@ def main():
                         help="Path of the validation dataset.")
     parser.add_argument("--model_checkpoint", type=str, default="metehergul/scgpt",
                         help="Path, url or short name of the model in huggingface")
+    parser.add_argument("--dataset_type", type=str, default="damd",
+                        choices=['damd', 'raw'], help="Type of the dataset")
 
     parser.add_argument("--lr", type=float,
                         default=5e-5, help="Learning rate")
@@ -167,6 +170,7 @@ def main():
     tb_logger.add_hparams({
         'train_dataset': args.train_dataset,
         'val_dataset': args.val_dataset,
+        'dataset_type': args.dataset_type,
         'model_checkpoint': args.model_checkpoint,
         'train_batch_size': args.train_batch_size,
         'valid_batch_size': args.valid_batch_size,
@@ -188,6 +192,7 @@ def main():
     response_generation_train_dataset = \
         SCGPTDatasetForTrain(tokenizer=tokenizer,
                              dataset_path=args.train_dataset,
+                             dataset_type=args.dataset_type,
                              max_length=args.max_length)
 
     response_generation_train_dataloader = DataLoader(response_generation_train_dataset,
@@ -197,6 +202,7 @@ def main():
     response_generation_validation_dataset = \
         SCGPTDatasetForTrain(tokenizer=tokenizer,
                              dataset_path=args.val_dataset,
+                             dataset_type=args.dataset_type,
                              max_length=args.max_length)
 
     response_generation_validation_dataloader = DataLoader(response_generation_validation_dataset,
