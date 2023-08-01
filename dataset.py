@@ -70,9 +70,11 @@ class SCGPTDatasetForTest(Dataset):
     def __init__(
         self,
         tokenizer,
+        dataset_type,
         dataset_path
     ):
         self.tokenizer = tokenizer
+        self.dataset_type = dataset_type
         self.dataset = self.read_dataset(dataset_path)
         self.dataset = self.prepare_dataset()
 
@@ -83,19 +85,31 @@ class SCGPTDatasetForTest(Dataset):
 
     def prepare_dataset(self):
         prompts = list()
+        sys_act_dict = list()
         labels = list()
-        for _, dialogue in tqdm(self.dataset.items()):
-            for turn in dialogue['log']:
-                sys_act = turn['sys_act']
-                resp_delex = turn['resp_delex']
 
+        if self.dataset_type == 'damd':
+            for _, dialogue in tqdm(self.dataset.items()):
+                for turn in dialogue['log']:
+                    sys_act = turn['sys_act']
+                    resp_delex = turn['resp_delex']
+
+                    prompt = sys_act + self.tokenizer.bos_token
+                    prompts.append(prompt)
+                    labels.append(resp_delex)
+        elif self.dataset_type == 'raw':
+            for entry in tqdm(self.dataset):
+                sys_act = entry['sys_act']
+                resp = entry['resp']
                 prompt = sys_act + self.tokenizer.bos_token
                 prompts.append(prompt)
-                labels.append(resp_delex)
+                labels.append(resp)
+                sys_act_dict.append(entry['sys_act_dict'])
 
         prompts_enc = self.tokenizer(prompts, padding=True, return_tensors='pt')
         prompts_enc['labels'] = labels
         prompts_enc['prompts'] = prompts
+        prompts_enc['sys_act_dict'] = sys_act_dict
         return prompts_enc
 
     def __len__(self):
@@ -106,10 +120,12 @@ class SCGPTDatasetForTest(Dataset):
         attention_mask = self.dataset['attention_mask']
         prompt = self.dataset['prompts']
         label = self.dataset['labels']
+        sys_act_dict = self.dataset['sys_act_dict']
 
         return {
             "input_ids": input_ids[index],
             "attention_mask": attention_mask[index],
             "prompt": prompt[index],
-            "label": label[index]
+            "label": label[index],
+            "sys_act_dict": json.dumps(sys_act_dict[index])
         }
