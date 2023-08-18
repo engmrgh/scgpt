@@ -131,7 +131,7 @@ def avg_f1(f1_scores):
     return sum_f1 / cnt
 
 
-def calculate_slot_error_rate_wen_definition(sys_act_dict, resp):
+def calculate_slot_error_rate_wen_definition(tokenizer, sys_act_dict, resp):
     slot_error_rate = {
         "total": 0,
         "miss": 0,
@@ -150,6 +150,7 @@ def calculate_slot_error_rate_wen_definition(sys_act_dict, resp):
             if (_domain_slot in NONE_CATEGORICAL_SLOTS) and (value not in ['?', 'none']):
                 slot_error_rate["total"] += 1
                 _value = value.lower()
+                _value = tokenizer.decode(tokenizer(_value)['input_ids'])
                 matches = re.findall(_value, resp)
                 if len(matches) == 0:
                     slot_error_rate["miss"] += 1
@@ -158,7 +159,7 @@ def calculate_slot_error_rate_wen_definition(sys_act_dict, resp):
     return slot_error_rate
 
 
-def calculate_slot_error_rate_kale_definition(sys_act_dict, resp):
+def calculate_slot_error_rate_kale_definition(tokenizer, sys_act_dict, resp):
     slot_error_rate = {
         "contains_non_categorical_slot": False,
         "contains_error_slot": False,
@@ -176,6 +177,7 @@ def calculate_slot_error_rate_kale_definition(sys_act_dict, resp):
             if (_domain_slot in NONE_CATEGORICAL_SLOTS) and (value not in ['?', 'none']):
                 slot_error_rate["contains_non_categorical_slot"] = True
                 _value = value.lower()
+                _value = tokenizer.decode(tokenizer(_value)['input_ids'])
                 matches = re.findall(_value, resp)
                 if len(matches) == 0:
                     slot_error_rate["contains_error_slot"] = True
@@ -301,9 +303,9 @@ def test(
                 _prediction = _prediction[_prediction.find(BOS_TOKEN)+len(BOS_TOKEN):].replace(PAD_TOKEN, "").strip()
                 _prediction = _prediction[:_prediction.find(EOS_TOKEN)]
 
-                ser_wen_definition = calculate_slot_error_rate_wen_definition(_sys_act_dict, _prediction)
+                ser_wen_definition = calculate_slot_error_rate_wen_definition(tokenizer, _sys_act_dict, _prediction)
                 wen_definitions_slot_error_rates.append(ser_wen_definition)
-                ser_kale_definition = calculate_slot_error_rate_kale_definition(_sys_act_dict, _prediction)
+                ser_kale_definition = calculate_slot_error_rate_kale_definition(tokenizer, _sys_act_dict, _prediction)
                 kale_definitions_slot_error_rates.append(ser_kale_definition)
 
                 prompts_list.append(_prompt)
